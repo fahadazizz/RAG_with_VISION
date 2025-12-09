@@ -1,0 +1,10 @@
+langchain
+langchain-core
+langchain-community
+langchain-experimental
+pypdf
+python-dotenv
+langchain-ollama
+nltk
+
+
