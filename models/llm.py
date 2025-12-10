@@ -10,25 +10,12 @@ class OllamaLLM:
     
     def __init__(
         self,
-        model_name: str | None = None,
-        base_url: str | None = None,
-        temperature: float | None = None,
-        num_ctx: int | None = None,
     ):
-        """
-        Initialize the Ollama LLM.
-        
-        Args:
-            model_name: Ollama model name (e.g., 'llama3.2', 'mistral')
-            base_url: Ollama server URL
-            temperature: Sampling temperature (0.0 - 2.0)
-            num_ctx: Context window size
-        """
         settings = get_settings()
         
-        self.model_name = model_name or settings.llm_model_name
-        self.base_url = base_url or settings.llm_base_url
-        self.temperature = temperature if temperature is not None else settings.llm_temperature
+        self.model_name = settings.llm_model_name
+        self.base_url = settings.llm_base_url
+        self.temperature = settings.llm_temperature
         self.num_ctx = num_ctx
         
         self._llm = ChatOllama(
@@ -63,17 +50,6 @@ class OllamaLLM:
         """
         for chunk in self._llm.stream(prompt):
             yield chunk.content
-    
-    # def get_langchain_llm(self) -> ChatOllama:
-    #     """
-    #     Get the underlying LangChain LLM object.
-    #     Useful for direct integration with LangChain chains.
-        
-    #     Returns:
-    #         ChatOllama instance
-    #     """
-    #     return self._llm
-
 
 def get_ollama_llm(
     model_name: str | None = None,
