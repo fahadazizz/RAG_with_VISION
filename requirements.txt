@@ -1,10 +1,23 @@
+# LangChain Core
 langchain
 langchain-core
 langchain-community
+langchain-huggingface
+langchain-pinecone
 langchain-experimental
-pypdf
-python-dotenv
+sentence-transformers
+pinecone-client
 langchain-ollama
+pypdf
+python-docx
+beautifulsoup4
+requests
+fastapi
+uvicorn
+python-multipart
+streamlit
+pydantic
+pydantic-settings
+python-dotenv
+tqdm
 nltk
-
-
