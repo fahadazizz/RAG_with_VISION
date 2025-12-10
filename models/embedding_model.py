@@ -1,7 +1,7 @@
 from typing import List
 from functools import lru_cache
 
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_ollama import OllamaEmbeddings
 from config import get_settings
 
 
@@ -9,17 +9,15 @@ class EmbeddingModel:
     
     def __init__(
         self,
-        model_name: str | None = None,
     ):
         settings = get_settings()
         
-        self.model_name = model_name or settings.embedding_model_name
-        self.device = "cpu"
+        self.model_name = settings.embedding_model_name
+        # self.device = "cpu"
         
-        self._embeddings = HuggingFaceEmbeddings(
-            model_name=self.model_name,
-            model_kwargs={"device": self.device},
-            encode_kwargs={"normalize_embeddings": True},
+        self._embeddings = OllamaEmbeddings(
+            model=self.model_name,
+            base_url=settings.llm_base_url,
         )
     
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
@@ -47,14 +45,7 @@ class EmbeddingModel:
         """
         return self._embeddings.embed_query(query)
     
-    def get_langchain_embeddings(self) -> HuggingFaceEmbeddings:
-        """
-        Get the underlying LangChain embeddings object.
-        Useful for direct integration with LangChain components.
-        
-        Returns:
-            HuggingFaceEmbeddings instance
-        """
+    def get_langchain_embeddings(self) -> OllamaEmbeddings:
         return self._embeddings
 
 

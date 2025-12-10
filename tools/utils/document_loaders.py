@@ -111,7 +111,7 @@ class DocumentLoaderFactory:
     SUPPORTED_EXTENSIONS = {".pdf", ".docx"}
     
     @classmethod
-    def get_loader(cls, source: str) -> BaseDocumentLoader:
+    def get_loader(cls, source: str):
         """
         Get appropriate loader for the source.
         
@@ -124,7 +124,6 @@ class DocumentLoaderFactory:
         Raises:
             ValueError: If source type is not supported
         """
-        # Check if it's a URL
         if source.startswith(("http://", "https://")):
             return URLLoader(source)
         

@@ -4,8 +4,6 @@ from datetime import datetime
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
-from tools.utils.text_cleaner import TextCleaner, clean_document_text
-
 
 class TextChunker:
     def __init__(

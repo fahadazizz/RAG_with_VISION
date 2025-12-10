@@ -10,13 +10,17 @@ class OllamaLLM:
     
     def __init__(
         self,
+        model_name: Optional[str] = None,
+        base_url: Optional[str] = None,
+        temperature: Optional[float] = None,
+        num_ctx: Optional[int] = None,
     ):
         settings = get_settings()
         
-        self.model_name = settings.llm_model_name
-        self.base_url = settings.llm_base_url
-        self.temperature = settings.llm_temperature
-        self.num_ctx = num_ctx
+        self.model_name = model_name or settings.llm_model_name
+        self.base_url = base_url or settings.llm_base_url
+        self.temperature = temperature if temperature is not None else settings.llm_temperature
+        self.num_ctx = num_ctx or 4096
         
         self._llm = ChatOllama(
             model=self.model_name,
@@ -54,19 +58,21 @@ class OllamaLLM:
 def get_ollama_llm(
     model_name: str | None = None,
     temperature: float | None = None,
+    num_ctx: int | None = None,
 ) -> OllamaLLM:
     return OllamaLLM(
         model_name=model_name,
         temperature=temperature,
+        num_ctx=num_ctx,
     )
 
 
-# @lru_cache()
-# def get_default_llm() -> OllamaLLM:
-#     """
-#     Get a cached default LLM instance.
+@lru_cache()
+def get_default_llm() -> OllamaLLM:
+    """
+    Get a cached default LLM instance.
     
-#     Returns:
-#         Cached OllamaLLM instance
-#     """
-#     return OllamaLLM()
+    Returns:
+        Cached OllamaLLM instance
+    """
+    return OllamaLLM()
