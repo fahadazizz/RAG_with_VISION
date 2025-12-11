@@ -1,225 +1,143 @@
-# RAG Chatbot Pipeline
+# 🤖 Local RAG Chatbot Pipeline
 
-A complete end-to-end Retrieval-Augmented Generation (RAG) chatbot system built with LangChain, Pinecone, and Ollama.
+A robust, modular Retrieval-Augmented Generation (RAG) system built with **FastAPI**, **Streamlit**, **LangChain**, and **Pinecone**. It leverages local LLMs via **Ollama** for both embeddings and inference, ensuring privacy and control.
 
-## 🌟 Features
-
-- **Document Ingestion**: Upload PDF, DOCX files or ingest content from URLs
-- **Smart Chunking**: Intelligent text splitting with context preservation
-- **Vector Storage**: Pinecone for scalable vector storage
-- **Local LLM**: Ollama for privacy-focused generation
-- **REST API**: FastAPI endpoints for programmatic access
-- **Web Dashboard**: Beautiful Streamlit interface
+---
 
 ## 🏗️ Architecture
 
+The system follows a modular "Agentic" design pattern, separating concerns into distinct layers:
+
+```mermaid
+graph TD
+    User[User / Dashboard] --> API[FastAPI Server]
+    API --> Agent[Document Agent]
+    API --> Chain[RAG Chain]
+    
+    subgraph Ingestion Flow
+    Agent --> Tools[Processing Tools]
+    Tools --> Loader[Loaders PDF/DOCX/URL] 
+    Tools --> Cleaner[Text Cleaner]
+    Tools --> Chunker[Text Chunker]
+    Chunker --> Embed[Embedding Model Ollama]
+    Embed --> VectorDB[Pinecone Vector Store]
+    end
+    
+    subgraph Query Flow
+    Chain --> Retriever[Retriever]
+    Retriever --> VectorDB -->
+    Retriever --> Context[Context Formatter]
+    Context --> Prompt[RAG Prompt]
+    Prompt --> LLM[Local LLM Ollama]
+    LLM --> Response
+    end
 ```
-User Document → Load → Clean → Chunk → Embed → Pinecone
-                                                    ↓
-User Query → Encode → Retrieve → Rerank → Augment → LLM → Response
-```
 
-## 📋 Prerequisites
+### Core Components
+- **API (`api.py`)**: RESTful entry point for the application.
+- **Dashboard (`dashboard.py`)**: Streamlit-based UI for chatting and uploading files.
+- **Document Agent (`agents/document_agent.py`)**: Orchestrates file ingestion.
+- **Tools (`tools/process_document.py`)**: Handles loading, cleaning, and chunking documents.
+- **Retriever (`chains/retriever.py`)**: Efficiently fetches relevant context using Cosine Similarity.
+- **RAG Chain (`chains/rag_chain.py`)**: Combines retrieval and generation into a seamless response.
 
-1. **Python 3.12+**
-2. **Ollama** installed and running
-   ```bash
-   # Install Ollama from https://ollama.ai
-   ollama serve
-   ollama pull kimi-k2:thinking  # or your preferred model
-   ```
-3. **Pinecone Account** with API key and index created
+---
 
-## 🚀 Quick Start
+## 🚀 Features
 
-### 1. Clone and Setup
+*   **Multi-Format Ingestion**: Supports PDF, DOCX, and URLs.
+*   **Smart Metadata**: Automatically extracts and preserves filenames and timestamps.
+*   **High-Performance Retrieval**: Uses optimized Cosine Similarity search with Pinecone.
+*   **Local AI Power**:
+    *   **Embeddings**: `embeddinggemma:latest` (via Ollama)
+    *   **LLM**: `kimi-k2-thinking:cloud` (via Ollama)
+*   **Clean UI**: Chat history sidebar and intuitive upload controls.
 
+---
+
+
+## 📦 Installation
+
+1.  **Clone the repository**:
+    ```bash
+    git clone <repository-url>
+    cd rag_with_clip
+    ```
+
+2.  **Create a virtual environment**:
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate 
+    ```
+
+3.  **Install dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+4.  **Configure Environment**:
+    Create a `.env` file in the root directory:
+    ```env
+    PINECONE_API_KEY=your_pinecone_api_key
+    PINECONE_INDEX_NAME=your_index_name
+    ```
+
+---
+
+## 🏃‍♂️ Usage
+
+### 1. Start the API Server
+The backend handles all logic. Run it first:
 ```bash
-cd /Volumes/DataDrive/my_AGENTS_AND_MCP/rag_wtih_CLIP
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-### 2. Configure Environment
-
-Create/update `.env` file:
-```env
-PINECONE_API_KEY=your_api_key_here
-PINECONE_INDEX_NAME=your_index_name
-```
-
-### 3. Run the System
-
-**Option A: API + Dashboard (Recommended)**
-
-Terminal 1 - Start API:
-```bash
-source .venv/bin/activate
 uvicorn api:app --reload
 ```
+*Server running at: `http://localhost:8000`*
 
-Terminal 2 - Start Dashboard:
+### 2. Start the Dashboard
+Open a new terminal and run the UI:
 ```bash
-source .venv/bin/activate
 streamlit run dashboard.py
 ```
+*Dashboard accessible at: `http://localhost:8501`*
 
-Then open http://localhost:8501 in your browser.
+---
 
-**Option B: Programmatic Usage**
+## 📂 Project Structure
 
-```python
-from agents.document_agent import get_document_agent
-from chains.rag_chain import get_rag_chain
-
-# Ingest a document
-agent = get_document_agent()
-result = agent.ingest_file("path/to/document.pdf")
-print(f"Created {result['chunks_created']} chunks")
-
-# Query the system
-rag = get_rag_chain()
-response = rag.query("What is this document about?")
-print(response.answer)
+```text
+rag_with_clip/
+├── agents/                 # High-level agents
+│   └── document_agent.py   # Manages ingestion workflow
+├── chains/                 # LangChain logic
+│   ├── rag_chain.py        # Question-Answering pipeline
+│   └── retriever.py        # Optimized retrieval logic
+├── models/                 # Model wrappers
+│   ├── embedding_model.py  # Ollama Embeddings wrapper
+│   └── llm.py              # Ollama LLM wrapper
+├── tools/                  # Low-level processing tools
+│   ├── process_document.py # Main processing pipeline
+│   ├── clean_text.py       # Text cleaning interface
+│   └── utils/
+│       ├── document_loaders.py # PDF/DOCX/URL loaders
+│       ├── text_cleaner.py     # Cleaning logic
+│       └── text_chunker.py     # Chunking logic
+├── utils/                  # Shared utilities
+│   └── vector_store.py     # Pinecone manager
+├── api.py                  # FastAPI application
+├── config.py               # Application settings
+├── dashboard.py            # Streamlit UI
+├── requirements.txt        # Dependencies
+└── .env                    # Secrets (not committed)
 ```
 
-## 📁 Project Structure
+---
 
-```
-rag_wtih_CLIP/
-├── config.py              # Configuration management
-├── requirements.txt       # Dependencies
-├── api.py                 # FastAPI endpoints
-├── dashboard.py           # Streamlit UI
-├── test_pipeline.py       # Component tests
-├── agents/
-│   └── document_agent.py  # Document ingestion orchestrator
-├── chains/
-│   ├── retriever.py       # Retrieval with reranking
-│   └── rag_chain.py       # Complete RAG chain
-├── models/
-│   ├── embedding_model.py # Sentence Transformers
-│   ├── vector_store.py    # Pinecone manager
-│   └── llm.py             # Ollama wrapper
-├── prompts/
-│   └── rag_prompts.py     # Engineered prompts
-└── tools/
-    └── utils/
-        ├── text_cleaner.py     # Text preprocessing
-        ├── text_chunker.py     # Smart chunking
-        └── document_loaders.py # PDF/DOCX/URL loaders
-```
 
-## ⚙️ Configuration
+## 📝 Configuration
 
-Edit `config.py` or set environment variables:
+Key settings can be adjusted in `config.py` or overridden via environment variables:
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `embedding_model_name` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model |
-| `llm_model_name` | `kimi-k2:thinking` | Ollama model |
-| `chunk_size` | `1000` | Characters per chunk |
-| `chunk_overlap` | `200` | Overlap between chunks |
-| `rag_top_k` | `5` | Initial retrieval count |
-| `rag_score_threshold` | `0.5` | Minimum similarity score |
-| `rag_rerank_top_k` | `3` | Final context documents |
+*   `RAG_TOP_K`: Number of documents to retrieve (default: 5)
+*   `CHUNK_SIZE`: Size of text chunks (default: 1000)
+*   `CHUNK_OVERLAP`: Overlap between chunks (default: 200)
 
-## 🔌 API Endpoints
-
-### Upload Document
-```bash
-curl -X POST "http://localhost:8000/upload" \
-  -F "file=@document.pdf"
-```
-
-### Ingest URL
-```bash
-curl -X POST "http://localhost:8000/upload-url" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com/article"}'
-```
-
-### Query
-```bash
-curl -X POST "http://localhost:8000/query" \
-  -H "Content-Type: application/json" \
-  -d '{"question": "What is the main topic?"}'
-```
-
-## 🧪 Testing
-
-Run the test suite to verify all components:
-
-```bash
-source .venv/bin/activate
-python test_pipeline.py
-```
-
-## 🎯 Key Features Explained
-
-### Smart Text Processing
-- **Cleaning**: Removes URLs, emails, normalizes whitespace
-- **Chunking**: Recursive splitting with configurable overlap
-- **Context**: Optional context windows from neighboring chunks
-
-### Intelligent Retrieval
-- **Vector Search**: Semantic similarity via Pinecone
-- **Score Filtering**: Removes low-relevance results
-- **Reranking**: Selects top-k most relevant chunks
-
-### Anti-Hallucination Prompts
-- Strict source-based answering
-- Explicit acknowledgment of limitations
-- Source citation requirements
-
-## 🛠️ Troubleshooting
-
-**Ollama Connection Error**
-```bash
-# Make sure Ollama is running
-ollama serve
-
-# Check if model is available
-ollama list
-```
-
-**Pinecone Connection Error**
-- Verify API key in `.env`
-- Check index name matches your Pinecone dashboard
-- Ensure index dimension matches embedding model (384 for all-MiniLM-L6-v2)
-
-**Import Errors**
-```bash
-# Reinstall dependencies
-pip install -r requirements.txt --force-reinstall
-```
-
-## 📚 Tech Stack
-
-- **LangChain**: Orchestration framework
-- **Pinecone**: Vector database
-- **Ollama**: Local LLM inference
-- **Sentence Transformers**: Embeddings
-- **FastAPI**: REST API
-- **Streamlit**: Web dashboard
-- **Pydantic**: Configuration management
-
-## 🤝 Contributing
-
-This is a complete RAG implementation following best practices:
-- Modular architecture
-- Type hints throughout
-- Comprehensive error handling
-- Engineered prompts for quality
-- Configurable components
-
-## 📄 License
-
-MIT License - feel free to use and modify!
-
-## 🎓 Learn More
-
-- [LangChain Documentation](https://python.langchain.com/)
-- [Pinecone Documentation](https://docs.pinecone.io/)
-- [Ollama Documentation](https://ollama.ai/docs)
