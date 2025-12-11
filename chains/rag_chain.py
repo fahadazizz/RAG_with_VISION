@@ -1,12 +1,15 @@
-from typing import Optional, Generator, List
 from dataclasses import dataclass
 
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_classic.memory import ConversationSummaryBufferMemory
+from typing import Optional, Generator, List
 
-from chains.retriever import get_retriever
+from chains.retriever import RAGRetriever, get_retriever
 from models.llm import get_ollama_llm
 from prompts.rag_prompts import get_rag_prompt
+from prompts.chat_history_prompt import chat_history_prompt
 
 
 @dataclass
@@ -26,6 +29,14 @@ class RAGChain:
         self._llm = get_ollama_llm()
         self._prompt = get_rag_prompt()
         
+        # Initialize Memory
+        self.memory = ConversationSummaryBufferMemory(
+            llm=self._llm._llm,
+            max_token_limit=2000,
+            memory_key="chat_history",
+            return_messages=True,
+        )
+        
         self._chain = self._build_chain()
     
     def _build_chain(self):
@@ -44,6 +55,24 @@ class RAGChain:
         
         return chain
     
+    def _consult_memory(self, question: str) -> Optional[str]:
+        """
+        Check if the question can be answered from memory.
+        """
+        history = self.memory.load_memory_variables({}).get("chat_history", [])
+        if not history:
+            return None
+            
+        check_prompt = chat_history_prompt()
+        
+        chain = check_prompt | self._llm._llm | StrOutputParser()
+        response = chain.invoke({"history": history, "question": question})
+        
+        if "NO_MEMORY_CONTEXT" in response:
+            return None
+        
+        return response
+
     def query(
         self,
         question: str,
@@ -57,20 +86,41 @@ class RAGChain:
         Returns:
             RAGResponse with answer and sources
         """
-        # 1. Retrieve documents (Single Pass)
+        print("Checking memory...")
+        memory_answer = self._consult_memory(question)
+        
+        if memory_answer:
+            print("Answer found in memory!")
+            self.memory.save_context({"input": question}, {"output": memory_answer})
+            
+            return RAGResponse(
+                answer=memory_answer,
+                sources=[{"source": "Conversation Memory"}],
+                query=question,
+            )
+
+        print("Retrieving from Vector DB...")
+        
+        # 2. Retrieve documents (Single Pass)
         results = self._retriever.retrieve(query=question)
         
-        # 2. Format context
+        # 3. Format context
         context = self._retriever.format_context(results)
         
-        # 3. Extract sources
+        # 4. Extract sources
         sources = [result.metadata for result in results]
         
-        # 4. Generate answer
+        # 5. Generate answer
         response = self._chain.invoke({
             "context": context,
             "question": question
         })
+        
+        # 6. Save to Memory (WITH SOURCES)
+        source_strings = [s.get('filename', 'Unknown') for s in sources]
+        full_response_to_store = f"{response}\n\nSources: {', '.join(source_strings)}"
+        
+        self.memory.save_context({"input": question}, {"output": full_response_to_store})
         
         return RAGResponse(
             answer=response,
@@ -91,11 +141,9 @@ class RAGChain:
         Yields:
             Response chunks
         """
-        # 1. Retrieve & Format
         results = self._retriever.retrieve(query=question)
         context = self._retriever.format_context(results)
         
-        # 2. stream
         prompt_value = self._prompt.format(
             context=context,
             question=question,
