@@ -29,109 +29,60 @@ class RAGRetriever:
         
         self._vector_store = get_vector_store()
         self._top_k = settings.rag_top_k
-        self._score_threshold = settings.rag_score_threshold
-        self._rerank_top_k = settings.rag_rerank_top_k
     
     def retrieve(
         self,
         query: str,
-        filter: Optional[dict] = None,
     ) -> List[RetrievalResult]:
         """
-        Retrieve documents with score filtering and reranking.
+        Retrieve documents using Cosine Similarity.
         
         Process:
-        1. Get top_k documents from vector store
-        2. Filter by score threshold
-        3. Sort by score and return top rerank_top_k
+        1. Get top_k documents from vector store (sorted by similarity)
+        2. Return results directly
         
         Args:
             query: User query
-            filter: Optional metadata filter
             
         Returns:
-            List of top reranked documents with scores
+            List of top documents with scores
         """
-        # Get initial results with scores
         results = self._vector_store.similarity_search_with_score(
             query=query,
             k=self._top_k,
-            filter=filter,
         )
         
-        retrieval_results = [
+        print(f"Retrieved {len(results)} documents via Cosine Similarity")
+        for i, (doc, score) in enumerate(results):
+             print(f" - Doc {i}: score={score:.4f}, source={doc.metadata.get('filename', 'Unknown')}")
+        
+        return [
             RetrievalResult(document=doc, score=score)
             for doc, score in results
         ]
-        
-        filtered_results = [
-            r for r in retrieval_results
-            if r.score >= self._score_threshold
-        ]
-        
-        sorted_results = sorted(
-            filtered_results,
-            key=lambda x: x.score,
-            reverse=True
-        )
-        
-        return sorted_results[:self._rerank_top_k]
     
-    def get_context_string(
-        self,
-        query: str,
-        filter: Optional[dict] = None,
-        include_sources: bool = True,
-    ) -> str:
+    def format_context(self, results: List[RetrievalResult]) -> str:
         """
-        Get formatted context string for LLM augmentation.
-        Uses retrieve() which always applies score filtering and reranking.
+        Format retrieved results into a context string.
         
         Args:
-            query: User query
-            filter: Optional metadata filter
-            include_sources: Whether to include source information
+            results: List of retrieval results
             
         Returns:
-            Formatted context string
+            Formatted string for LLM prompt
         """
-        results = self.retrieve(query=query, filter=filter)
-        
         if not results:
             return "No relevant documents found."
         
         context_parts = []
         for i, result in enumerate(results, 1):
-            if include_sources:
-                source = result.metadata.get("filename", "Unknown")
-                context_parts.append(
-                    f"[Source {i}: {source}]\n{result.content}"
-                )
-            else:
-                context_parts.append(f"[{i}] {result.content}")
+            source = result.metadata.get("filename", "Unknown")
+            context_parts.append(
+                f"[Source {i}: {source}]\n{result.content}"
+            )
         
         return "\n\n---\n\n".join(context_parts)
-    
-    def get_sources(
-        self,
-        query: str,
-        filter: Optional[dict] = None,
-    ) -> List[dict]:
-        """
-        Get source information for retrieved documents.
-        Uses retrieve() which always applies score filtering and reranking.
-        
-        Args:
-            query: User query
-            filter: Optional metadata filter
-            
-        Returns:
-            List of source metadata dictionaries
-        """
-        results = self.retrieve(query=query, filter=filter)
-        return [result.metadata for result in results]
 
 
 def get_retriever() -> RAGRetriever:
-    """Factory function to get a retriever instance."""
     return RAGRetriever()

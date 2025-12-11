@@ -1,12 +1,13 @@
 from datetime import datetime
 from langchain_core.documents import Document
 from tools.load_documents import load_document
-from tools.text_cleaner import clean_document_text
+from tools.clean_text import clean_document_text
 from tools.utils.text_chunker import TextChunker
 
 
 def process_document(
     source: str,
+    original_filename: str | None = None,
     chunk_size: int = 1000,
     chunk_overlap: int = 200,
     clean_text: bool = True,
@@ -17,6 +18,7 @@ def process_document(
     
     Args:
         source: File path or URL
+        original_filename: Original filename (if source is a temp file)
         chunk_size: Size of each chunk
         chunk_overlap: Overlap between chunks
         clean_text: Whether to apply text cleaning
@@ -27,8 +29,10 @@ def process_document(
     # Load document
     documents = load_document(source)
     
-    # Extract filename from source
-    if source.startswith(("http://", "https://")):
+    # Determine filename for metadata
+    if original_filename:
+        filename = original_filename
+    elif source.startswith(("http://", "https://")):
         filename = source
     else:
         from pathlib import Path

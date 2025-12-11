@@ -15,12 +15,18 @@ class DocumentAgent:
         self._chunk_size = settings.chunk_size
         self._chunk_overlap = settings.chunk_overlap
     
-    def ingest_file(self, file_path: str, clean_text: bool = True) -> dict:
+    def ingest_file(
+        self,
+        file_path: str,
+        original_filename: str | None = None,
+        clean_text: bool = True
+    ) -> dict:
         """
         Ingest a file into the vector store.
         
         Args:
             file_path: Path to the file (PDF or DOCX)
+            original_filename: Original filename (if file_path is temp)
             clean_text: Whether to apply text cleaning
             
         Returns:
@@ -30,11 +36,14 @@ class DocumentAgent:
         if not path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
         
-        if not DocumentLoaderFactory.is_supported(file_path):
-            raise ValueError(f"Unsupported file type: {path.suffix}")
+        # Check support (use original suffix if available, else path suffix)
+        check_path = original_filename if original_filename else file_path
+        if not DocumentLoaderFactory.is_supported(check_path):
+            raise ValueError(f"Unsupported file type: {Path(check_path).suffix}")
         
         chunks = process_document(
             source=file_path,
+            original_filename=original_filename,
             chunk_size=self._chunk_size,
             chunk_overlap=self._chunk_overlap,
             clean_text=clean_text,
@@ -44,7 +53,7 @@ class DocumentAgent:
         
         return {
             "status": "success",
-            "filename": path.name,
+            "filename": original_filename or path.name,
             "chunks_created": len(chunks),
             "document_ids": ids,
             "timestamp": datetime.now().isoformat(),

@@ -26,8 +26,6 @@ class Settings(BaseSettings):
     
     # RAG Retrieval
     rag_top_k: int = Field(default=5)
-    rag_score_threshold: float = Field(default=0.5)
-    rag_rerank_top_k: int = Field(default=3)
     
     # API
     api_host: str = Field(default="0.0.0.0")

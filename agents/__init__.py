@@ -1,8 +1,7 @@
 """Agents package for RAG pipeline."""
 
-from agents.document_agent import DocumentAgent, get_document_agent
+from agents.document_agent import get_document_agent
 
 __all__ = [
-    "DocumentAgent",
     "get_document_agent",
 ]

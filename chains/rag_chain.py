@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
 
-from chains.retriever import RAGRetriever, get_retriever
-from models.llm import OllamaLLM, get_ollama_llm
+from chains.retriever import get_retriever
+from models.llm import get_ollama_llm
 from prompts.rag_prompts import get_rag_prompt
 
 
@@ -33,16 +33,11 @@ class RAGChain:
         Build the LCEL chain for RAG.
         
         Returns:
-            LCEL chain = question -> retrieve context -> format prompt -> generate
+            LCEL chain = prompted LLM
         """
+        # We pass "context" and "question" directly to invoke()
         chain = (
-            {
-                "context": RunnableLambda(
-                    lambda x: self._retriever.get_context_string(x["question"])
-                ),
-                "question": RunnablePassthrough() | RunnableLambda(lambda x: x["question"]),
-            }
-            | self._prompt
+            self._prompt
             | self._llm._llm
             | StrOutputParser()
         )
@@ -52,27 +47,30 @@ class RAGChain:
     def query(
         self,
         question: str,
-        filter: Optional[dict] = None,
     ) -> RAGResponse:
         """
         Execute a RAG query and get a response.
         
         Args:
             question: User question
-            filter: Optional metadata filter for retrieval
             
         Returns:
             RAGResponse with answer and sources
         """
-
-        context = self._retriever.get_context_string(
-            query=question,
-            filter=filter,
-            include_sources=True,
-        )
-        sources = self._retriever.get_sources(query=question, filter=filter)
+        # 1. Retrieve documents (Single Pass)
+        results = self._retriever.retrieve(query=question)
         
-        response = self._chain.invoke({"question": question})
+        # 2. Format context
+        context = self._retriever.format_context(results)
+        
+        # 3. Extract sources
+        sources = [result.metadata for result in results]
+        
+        # 4. Generate answer
+        response = self._chain.invoke({
+            "context": context,
+            "question": question
+        })
         
         return RAGResponse(
             answer=response,
@@ -83,25 +81,21 @@ class RAGChain:
     def stream_query(
         self,
         question: str,
-        filter: Optional[dict] = None,
     ) -> Generator[str, None, None]:
         """
         Stream a RAG query response.
         
         Args:
             question: User question
-            filter: Optional metadata filter
             
         Yields:
             Response chunks
         """
-        context = self._retriever.get_context_string(
-            query=question,
-            filter=filter,
-            include_sources=True,
-        )
+        # 1. Retrieve & Format
+        results = self._retriever.retrieve(query=question)
+        context = self._retriever.format_context(results)
         
-        
+        # 2. stream
         prompt_value = self._prompt.format(
             context=context,
             question=question,

@@ -62,34 +62,10 @@ class VectorStoreManager:
         
         return all_ids
     
-    def similarity_search(
-        self,
-        query: str,
-        k: int = 5,
-        filter: Optional[dict] = None,
-    ) -> List[Document]:
-        """
-        Search for similar documents.
-        
-        Args:
-            query: Query text
-            k: Number of results to return
-            filter: Optional metadata filter
-            
-        Returns:
-            List of similar documents
-        """
-        return self._vector_store.similarity_search(
-            query=query,
-            k=k,
-            filter=filter,
-        )
-    
     def similarity_search_with_score(
         self,
         query: str,
         k: int = 5,
-        filter: Optional[dict] = None,
     ) -> List[Tuple[Document, float]]:
         """
         Search for similar documents with similarity scores.
@@ -102,10 +78,11 @@ class VectorStoreManager:
         Returns:
             List of (document, score) tuples
         """
+
+        print(f"doing similairty search with score: query='{query}' k={k}")
         return self._vector_store.similarity_search_with_score(
             query=query,
             k=k,
-            filter=filter,
         )
     
     def delete_by_filter(self, filter: dict) -> None:
@@ -118,25 +95,6 @@ class VectorStoreManager:
         # Get the Pinecone index directly for deletion
         index = self._pc.Index(self.index_name)
         index.delete(filter=filter)
-    
-    def get_retriever(self, k: int = 5, filter: Optional[dict] = None):
-        """
-        Get a LangChain retriever for use in chains.
-        
-        Args:
-            k: Number of documents to retrieve
-            filter: Optional metadata filter
-            
-        Returns:
-            LangChain retriever
-        """
-        search_kwargs = {"k": k}
-        if filter:
-            search_kwargs["filter"] = filter
-        
-        return self._vector_store.as_retriever(
-            search_kwargs=search_kwargs
-        )
 
 
 @lru_cache()

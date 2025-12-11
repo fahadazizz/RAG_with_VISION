@@ -67,7 +67,9 @@ class DOCXLoader(MetaDATAExtractor):
         Returns:
             List of Document objects
         """
+        print("loading document")
         loader = Docx2txtLoader(self.file_path)
+        print("document laoded")
         documents = loader.load()
         
         # Update metadata
@@ -90,12 +92,7 @@ class URLLoader(MetaDATAExtractor):
         Returns:
             List of Document objects
         """
-        loader = WebBaseLoader(
-            web_paths=[self.url],
-            bs_kwargs={
-                "parse_only": None, 
-            }
-        )
+        loader = WebBaseLoader(self.url)
         documents = loader.load()
         
         # Update metadata with URL as filename

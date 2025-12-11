@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from config import get_settings
-from agents.document_agent import DocumentAgent, get_document_agent
-from chains.rag_chain import RAGChain, get_rag_chain
+from agents.document_agent import get_document_agent
+from chains.rag_chain import get_rag_chain
 
 
 # Initialize FastAPI app
@@ -107,7 +107,7 @@ async def upload_document(
         
         # Ingest the document
         agent = get_agent()
-        result = agent.ingest_file(tmp_path)
+        result = agent.ingest_file(tmp_path, original_filename=file.filename)
         
         # Clean up temp file
         os.unlink(tmp_path)
@@ -164,7 +164,6 @@ async def query(request: QueryRequest):
         chain = get_chain()
         response = chain.query(
             question=request.question,
-            filter=request.filter,
         )
         
         return QueryResponse(
