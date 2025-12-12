@@ -4,9 +4,12 @@ from datetime import datetime
 from pathlib import Path
 
 from langchain_core.documents import Document
-from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.document_loaders import Docx2txtLoader
 from langchain_community.document_loaders import WebBaseLoader
+from langchain_community.document_loaders import PyMuPDFLoader
+from langchain_community.document_loaders.parsers import RapidOCRBlobParser
+import fitz 
+from PIL import Image
 
 
 class MetaDATAExtractor():
@@ -27,29 +30,88 @@ class MetaDATAExtractor():
         }
 
 
+
 class PDFLoader(MetaDATAExtractor):
     
     def __init__(self, file_path: str):
         self.file_path = file_path
         self.filename = Path(file_path).name
+        self.img_dir = Path("static/images")
+        self.img_dir.mkdir(parents=True, exist_ok=True)
     
-    def load(self) -> list[Document]:
+    def _extract_images(self) -> dict:
         """
-        Load PDF document.
+        Extract images from PDF and save to disk.
         
         Returns:
-            List of Document objects (one per page)
+            Dictionary mapping page_index (0-based) to list of image paths.
         """
-        loader = PyPDFLoader(self.file_path)
+        images_map = {}
+        doc = fitz.open(self.file_path)
+        
+        for page_index, page in enumerate(doc):
+            image_list = page.get_images(full=True)
+            page_images = []
+            
+            for img_index, img in enumerate(image_list):
+                try:
+                    xref = img[0]
+                    base_image = doc.extract_image(xref)
+                    image_bytes = base_image["image"]
+                    image_ext = base_image["ext"]
+                    
+                    image_filename = f"{self.filename}_p{page_index+1}_i{img_index+1}.{image_ext}"
+                    image_path = self.img_dir / image_filename
+                    
+                    with open(image_path, "wb") as f:
+                        f.write(image_bytes)
+                    
+                    page_images.append(str(image_path))
+                except Exception as e:
+                    print(f"Error extracting image {img_index} on page {page_index}: {e}")
+            
+            if page_images:
+                images_map[page_index] = page_images
+                
+        return images_map
+
+    def load(self) -> list[Document]:
+        """
+        Load PDF with text, images, and OCR using LangChain's PyMuPDFLoader.
+        Also manually extracts and saves images to disk for multimodal usage.
+        
+        Returns:
+            List of Documents (one per page)
+        """
+        loader = PyMuPDFLoader(
+            self.file_path,
+            mode="page",
+            images_inner_format="markdown-img",
+            images_parser=RapidOCRBlobParser(),
+        )
         documents = loader.load()
+        
+        images_by_page = self._extract_images()
         
         metadata = self._create_metadata(self.filename)
         for doc in documents:
-            page_num = doc.metadata.get("page", 0)
-            doc.metadata = {
+            existing_meta = doc.metadata
+            
+            page_idx = existing_meta.get("page", 0) 
+            
+            final_metadata = {
                 **metadata,
-                "page": page_num,
+                **existing_meta,
             }
+            
+            if page_idx in images_by_page:
+                final_metadata["image_paths"] = images_by_page[page_idx]
+            
+            if "page" in existing_meta:
+                 final_metadata["page"] = existing_meta["page"] + 1
+            
+            doc.metadata = final_metadata
+            doc.page_content = doc.page_content 
         
         return documents
 
@@ -95,7 +157,6 @@ class URLLoader(MetaDATAExtractor):
         loader = WebBaseLoader(self.url)
         documents = loader.load()
         
-        # Update metadata with URL as filename
         metadata = self._create_metadata(self.url)
         for doc in documents:
             doc.metadata = metadata

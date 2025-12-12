@@ -38,10 +38,63 @@ def process_document(
         from pathlib import Path
         filename = Path(source).name
     
-    # Process all document pages
-    all_chunks = []
-    timestamp = datetime.now().isoformat()
+    # Collect image paths for CLIP processing
+    image_infos = {}
+    for doc in documents:
+        if "image_paths" in doc.metadata:
+            for path in doc.metadata["image_paths"]:
+                if path not in image_infos:
+                    image_infos[path] = {
+                        "page": doc.metadata.get("page", 0),
+                        "filename": doc.metadata.get("filename", filename)
+                    }
+
+    # Process images with CLIP
+    image_docs = []
+    image_embeddings = []
     
+    try:
+        from models.clip_model import get_clip_model
+        clip_model = get_clip_model()
+        candidates = ["chart", "diagram", "table", "screenshot", "photograph", "document page", "plot"]
+        
+        print(f"Processing {len(image_infos)} images with CLIP...")
+        
+        for img_path, info in image_infos.items():
+            # 1. Label
+            label = clip_model.get_image_label(img_path, candidates)
+            
+            # 2. Embed
+            embedding = clip_model.get_image_embedding(img_path)
+            
+            if embedding:
+                from pathlib import Path
+                img_name = Path(img_path).name
+                
+                img_meta = {
+                    "source": source,
+                    "filename": info["filename"],
+                    "image_path": img_path,
+                    "type": "image",
+                    "label": label,
+                    "page": info["page"],
+                    "timestamp": timestamp
+                }
+                
+                img_doc = Document(
+                    page_content=f"Image Type: {label}\nImage File: {img_name}",
+                    metadata=img_meta
+                )
+                image_docs.append(img_doc)
+                image_embeddings.append(embedding)
+                
+    except ImportError:
+        print("CLIP model dependencies not found. Skipping image embedding.")
+    except Exception as e:
+        print(f"Error processing images with CLIP: {e}")
+
+    # Process text chunks as before
+    all_chunks = []
     for doc in documents:
         text = doc.page_content
         
@@ -59,13 +112,15 @@ def process_document(
             "timestamp": timestamp,
         }
         
-        # Preserve page number if present
         if "page" in doc.metadata:
             metadata["page"] = doc.metadata["page"]
+        
+        if "image_paths" in doc.metadata:
+            metadata["image_paths"] = doc.metadata["image_paths"]
         
         # Chunk the text
         chunker = TextChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         chunks = chunker.chunk(text, metadata)
         all_chunks.extend(chunks)
     
-    return all_chunks
+    return all_chunks, (image_docs, image_embeddings)

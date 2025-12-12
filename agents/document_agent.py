@@ -41,7 +41,7 @@ class DocumentAgent:
         if not DocumentLoaderFactory.is_supported(check_path):
             raise ValueError(f"Unsupported file type: {Path(check_path).suffix}")
         
-        chunks = process_document(
+        result = process_document(
             source=file_path,
             original_filename=original_filename,
             chunk_size=self._chunk_size,
@@ -49,12 +49,29 @@ class DocumentAgent:
             clean_text=clean_text,
         )
         
-        ids = self._vector_store.add_documents(chunks)
+        # Unpack result (backward compatibility check not strictly needed if we know we changed it, but safe)
+        if isinstance(result, tuple):
+            chunks, (image_docs, image_embs) = result
+        else:
+            chunks = result
+            image_docs, image_embs = [], []
+        
+        ids = []
+        # Add text chunks
+        if chunks:
+            ids.extend(self._vector_store.add_documents(chunks))
+            
+        # Add image chunks
+        if image_docs and image_embs:
+            print(f"Ingesting {len(image_docs)} images...")
+            img_ids = self._vector_store.add_image_documents(image_docs, image_embs)
+            ids.extend(img_ids)
         
         return {
             "status": "success",
             "filename": original_filename or path.name,
             "chunks_created": len(chunks),
+            "images_indexed": len(image_docs),
             "document_ids": ids,
             "timestamp": datetime.now().isoformat(),
         }
@@ -73,19 +90,32 @@ class DocumentAgent:
         if not url.startswith(("http://", "https://")):
             raise ValueError("Invalid URL format. Must start with http:// or https://")
         
-        chunks = process_document(
+        result = process_document(
             source=url,
             chunk_size=self._chunk_size,
             chunk_overlap=self._chunk_overlap,
             clean_text=clean_text,
         )
         
-        ids = self._vector_store.add_documents(chunks)
+        if isinstance(result, tuple):
+            chunks, (image_docs, image_embs) = result
+        else:
+            chunks = result
+            image_docs, image_embs = [], []
+        
+        ids = []
+        if chunks:
+            ids.extend(self._vector_store.add_documents(chunks))
+            
+        if image_docs and image_embs:
+             img_ids = self._vector_store.add_image_documents(image_docs, image_embs)
+             ids.extend(img_ids)
         
         return {
             "status": "success",
             "source": url,
             "chunks_created": len(chunks),
+            "images_indexed": len(image_docs),
             "document_ids": ids,
             "timestamp": datetime.now().isoformat(),
         }

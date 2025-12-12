@@ -54,7 +54,9 @@ class RAGRetriever:
         
         print(f"Retrieved {len(results)} documents via Cosine Similarity")
         for i, (doc, score) in enumerate(results):
-             print(f" - Doc {i}: score={score:.4f}, source={doc.metadata.get('filename', 'Unknown')}")
+             filename = doc.metadata.get('filename', 'Unknown')
+             page = f", Page {doc.metadata.get('page')}" if 'page' in doc.metadata else ""
+             print(f" - Doc {i}: score={score:.4f}, source={filename}{page}")
         
         return [
             RetrievalResult(document=doc, score=score)
@@ -77,8 +79,10 @@ class RAGRetriever:
         context_parts = []
         for i, result in enumerate(results, 1):
             source = result.metadata.get("filename", "Unknown")
+            page_info = f", Page {result.metadata.get('page')}" if "page" in result.metadata else ""
+            
             context_parts.append(
-                f"[Source {i}: {source}]\n{result.content}"
+                f"[Source {i}: {source}{page_info}]\n{result.content}"
             )
         
         return "\n\n---\n\n".join(context_parts)

@@ -61,6 +61,58 @@ class VectorStoreManager:
             all_ids.extend(ids)
         
         return all_ids
+
+    def add_image_documents(
+        self,
+        documents: List[Document],
+        embeddings: List[List[float]],
+        batch_size: int = 100,
+    ) -> List[str]:
+        """
+        Add documents with pre-computed embeddings (for Images) directly to Pinecone.
+        Bypasses the default text embedding model.
+        
+        Args:
+            documents: List of Document objects
+            embeddings: List of embedding vectors (must match len(documents))
+            batch_size: Batch size
+            
+        Returns:
+            List of IDs
+        """
+        import uuid
+        
+        index = self._pc.Index(self.index_name)
+        all_ids = []
+        
+        for i in range(0, len(documents), batch_size):
+            batch_docs = documents[i:i + batch_size]
+            batch_embs = embeddings[i:i + batch_size]
+            
+            vectors = []
+            batch_ids = []
+            
+            for doc, emb in zip(batch_docs, batch_embs):
+                doc_id = str(uuid.uuid4())
+                batch_ids.append(doc_id)
+                
+                # Metadata must be simple types for Pinecone
+                metadata = doc.metadata.copy()
+                metadata["text"] = doc.page_content 
+                # Ensure image_paths is not a list (Pinecone supports list of strings, but let's be safe)
+                # Actually Pinecone supports list[str].
+                
+                vectors.append({
+                    "id": doc_id, 
+                    "values": emb, 
+                    "metadata": metadata
+                })
+            
+            index.upsert(vectors=vectors)
+            all_ids.extend(batch_ids)
+            
+        print(f"Upserted {len(all_ids)} image vectors directly.")
+        return all_ids
     
     def similarity_search_with_score(
         self,
