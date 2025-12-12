@@ -8,7 +8,9 @@ langchain-experimental
 sentence-transformers
 pinecone-client
 langchain-ollama
-pypdf
+pymupdf
+rapidocr-onnxruntime
+pillow
 python-docx
 docx2txt
 beautifulsoup4
@@ -22,3 +24,4 @@ pydantic-settings
 python-dotenv
 tqdm
 nltk
+transformers

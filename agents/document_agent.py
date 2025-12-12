@@ -36,12 +36,11 @@ class DocumentAgent:
         if not path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
         
-        # Check support (use original suffix if available, else path suffix)
         check_path = original_filename if original_filename else file_path
         if not DocumentLoaderFactory.is_supported(check_path):
             raise ValueError(f"Unsupported file type: {Path(check_path).suffix}")
         
-        chunks = process_document(
+        result = process_document(
             source=file_path,
             original_filename=original_filename,
             chunk_size=self._chunk_size,
@@ -49,62 +48,30 @@ class DocumentAgent:
             clean_text=clean_text,
         )
         
-        ids = self._vector_store.add_documents(chunks)
+        if isinstance(result, tuple):
+            chunks, (image_docs, image_embs) = result
+        else:
+            chunks = result
+            image_docs, image_embs = [], []
+        
+        ids = []
+        if chunks:
+            ids.extend(self._vector_store.add_documents(chunks))
+            
+        if image_docs and image_embs:
+            print(f"Ingesting {len(image_docs)} images...")
+            img_ids = self._vector_store.add_image_documents(image_docs, image_embs)
+            ids.extend(img_ids)
         
         return {
             "status": "success",
             "filename": original_filename or path.name,
             "chunks_created": len(chunks),
+            "images_indexed": len(image_docs),
             "document_ids": ids,
             "timestamp": datetime.now().isoformat(),
         }
-    
-    def ingest_url(self, url: str, clean_text: bool = True) -> dict:
-        """
-        Ingest content from a URL into the vector store.
-        
-        Args:
-            url: URL to fetch content from
-            clean_text: Whether to apply text cleaning
-            
-        Returns:
-            Ingestion result with document count and IDs
-        """
-        if not url.startswith(("http://", "https://")):
-            raise ValueError("Invalid URL format. Must start with http:// or https://")
-        
-        chunks = process_document(
-            source=url,
-            chunk_size=self._chunk_size,
-            chunk_overlap=self._chunk_overlap,
-            clean_text=clean_text,
-        )
-        
-        ids = self._vector_store.add_documents(chunks)
-        
-        return {
-            "status": "success",
-            "source": url,
-            "chunks_created": len(chunks),
-            "document_ids": ids,
-            "timestamp": datetime.now().isoformat(),
-        }
-    
-    def delete_file(self, filename: str) -> dict:
-        """Delete all chunks associated with a filename."""
-        try:
-            self._vector_store.delete_by_filter({"filename": filename})
-            return {
-                "status": "success",
-                "deleted_file": filename,
-                "timestamp": datetime.now().isoformat(),
-            }
-        except Exception as e:
-            return {
-                "status": "error",
-                "error": str(e),
-                "timestamp": datetime.now().isoformat(),
-            }
+
 
 
 def get_document_agent() -> DocumentAgent:

@@ -4,3 +4,4 @@
 .agent
 .agent/*
 __pycache__
+static/images/*

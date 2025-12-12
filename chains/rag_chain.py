@@ -2,9 +2,7 @@ from dataclasses import dataclass
 
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import PromptTemplate
 from langchain_classic.memory import ConversationSummaryBufferMemory
-from typing import Optional, Generator, List
 
 from chains.retriever import RAGRetriever, get_retriever
 from models.llm import get_ollama_llm
@@ -29,16 +27,17 @@ class RAGChain:
         self._llm = get_ollama_llm()
         self._prompt = get_rag_prompt()
         
-        # Initialize Memory
         self.memory = ConversationSummaryBufferMemory(
             llm=self._llm._llm,
             max_token_limit=2000,
             memory_key="chat_history",
             return_messages=True,
         )
-        
+
         self._chain = self._build_chain()
-    
+
+        
+
     def _build_chain(self):
         """
         Build the LCEL chain for RAG.
@@ -54,7 +53,8 @@ class RAGChain:
         )
         
         return chain
-    
+
+
     def _consult_memory(self, question: str) -> Optional[str]:
         """
         Check if the question can be answered from memory.
@@ -73,19 +73,23 @@ class RAGChain:
         
         return response
 
+
     def query(
         self,
         question: str,
+        image_query_path: Optional[str] = None,
     ) -> RAGResponse:
         """
         Execute a RAG query and get a response.
         
         Args:
             question: User question
+            image_query_path: Optional path to query image for multimodal search
             
         Returns:
             RAGResponse with answer and sources
         """
+
         print("Checking memory...")
         memory_answer = self._consult_memory(question)
         
@@ -100,9 +104,12 @@ class RAGChain:
             )
 
         print("Retrieving from Vector DB...")
-        
-        # 2. Retrieve documents (Single Pass)
-        results = self._retriever.retrieve(query=question)
+
+        # 1. Retrieve documents (Multimodal if image provided)
+        results = self._retriever.retrieve(
+            query=question,
+            image_query_path=image_query_path
+        )
         
         # 3. Format context
         context = self._retriever.format_context(results)
@@ -116,11 +123,12 @@ class RAGChain:
             "question": question
         })
         
-        # 6. Save to Memory (WITH SOURCES)
+         # 6. Save to Memory (WITH SOURCES)
         source_strings = [s.get('filename', 'Unknown') for s in sources]
         full_response_to_store = f"{response}\n\nSources: {', '.join(source_strings)}"
         
         self.memory.save_context({"input": question}, {"output": full_response_to_store})
+        
         
         return RAGResponse(
             answer=response,
@@ -131,17 +139,23 @@ class RAGChain:
     def stream_query(
         self,
         question: str,
+        image_query_path: Optional[str] = None,
     ) -> Generator[str, None, None]:
         """
         Stream a RAG query response.
         
         Args:
             question: User question
+            image_query_path: Optional path to query image for multimodal search
             
         Yields:
             Response chunks
         """
-        results = self._retriever.retrieve(query=question)
+        # 1. Retrieve & Format
+        results = self._retriever.retrieve(
+            query=question,
+            image_query_path=image_query_path
+        )
         context = self._retriever.format_context(results)
         
         prompt_value = self._prompt.format(

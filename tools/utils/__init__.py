@@ -6,7 +6,6 @@ from tools.utils.document_loaders import (
     DocumentLoaderFactory,
     PDFLoader,
     DOCXLoader,
-    URLLoader,
     MetaDATAExtractor,
 )
 
@@ -16,6 +15,5 @@ __all__ = [
     "DocumentLoaderFactory",
     "PDFLoader",
     "DOCXLoader",
-    "URLLoader",
     "MetaDATAExtractor",
 ]

@@ -15,10 +15,8 @@ from agents.document_agent import get_document_agent
 from chains.rag_chain import get_rag_chain
 
 
-# Initialize FastAPI app
-app = FastAPI(title="RAG Chatbot API")
+app = FastAPI(title="VRAG - Vision RAG API", version="2.0")
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -27,13 +25,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Lazy initialization of components
 _document_agent = None
 _rag_chain = None
 
 
 def get_agent():
-    """Get or create document agent."""
     global _document_agent
     if _document_agent is None:
         _document_agent = get_document_agent()
@@ -41,51 +37,39 @@ def get_agent():
 
 
 def get_chain():
-    """Get or create RAG chain."""
     global _rag_chain
     if _rag_chain is None:
         _rag_chain = get_rag_chain()
     return _rag_chain
 
 
-# Request/Response Models
-class QueryRequest(BaseModel):
-    """Request model for querying."""
-    question: str = Field(..., description="Question to ask")
-    filter: Optional[dict] = Field(None, description="Metadata filter")
-
-
-class QueryResponse(BaseModel):
-    """Response model for queries."""
+class ChatResponse(BaseModel):
     answer: str
     sources: list
     query: str
     timestamp: str
 
 
-class URLIngestRequest(BaseModel):
-    """Request model for URL ingestion."""
-    url: str = Field(..., description="URL to ingest")
-
-
 class IngestResponse(BaseModel):
-    """Response model for document ingestion."""
     status: str
-    source: str
+    filename: str
     chunks_created: int
+    images_indexed: int
+    timestamp: str
+
+
+class ImageIngestResponse(BaseModel):
+    status: str
+    filename: str
+    label: str
     timestamp: str
 
 
 @app.post("/upload", response_model=IngestResponse)
 async def upload_document(
-    file: UploadFile = File(..., description="PDF or DOCX file to upload"),
+    file: UploadFile = File(..., description="PDF or DOCX file"),
 ):
-    """
-    Upload and ingest a document (PDF or DOCX).
-    
-    The document will be processed, chunked, embedded, and stored in the vector database.
-    """
-    # Validate file type
+    """Upload and ingest a document (PDF or DOCX) with images."""
     allowed_extensions = {".pdf", ".docx"}
     file_ext = os.path.splitext(file.filename)[1].lower()
     
@@ -96,77 +80,121 @@ async def upload_document(
         )
     
     try:
-        # Save uploaded file temporarily
-        with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=file_ext,
-        ) as tmp_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
             content = await file.read()
             tmp_file.write(content)
             tmp_path = tmp_file.name
         
-        # Ingest the document
         agent = get_agent()
         result = agent.ingest_file(tmp_path, original_filename=file.filename)
         
-        # Clean up temp file
         os.unlink(tmp_path)
         
         return IngestResponse(
             status=result["status"],
-            source=file.filename,
+            filename=file.filename,
             chunks_created=result["chunks_created"],
+            images_indexed=result.get("images_indexed", 0),
             timestamp=result["timestamp"],
         )
     
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error processing document: {str(e)}",
-        )
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@app.post("/upload-url", response_model=IngestResponse)
-async def upload_url(request: URLIngestRequest):
-    """
-    Ingest content from a URL.
+@app.post("/upload-image", response_model=ImageIngestResponse)
+async def upload_image(
+    file: UploadFile = File(..., description="Image file"),
+):
+    """Upload and ingest a standalone image using CLIP."""
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
+    file_ext = os.path.splitext(file.filename)[1].lower()
     
-    The webpage content will be extracted, chunked, embedded, and stored.
-    """
+    if file_ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported: {file_ext}. Allowed: {allowed_extensions}",
+        )
+    
     try:
-        agent = get_agent()
-        result = agent.ingest_url(request.url)
+        from pathlib import Path
+        from langchain_core.documents import Document
+        from models.clip_model import get_clip_model
+        from utils.vector_store import get_vector_store
         
-        return IngestResponse(
-            status=result["status"],
-            source=request.url,
-            chunks_created=result["chunks_created"],
-            timestamp=result["timestamp"],
+        img_dir = Path("static/images")
+        img_dir.mkdir(parents=True, exist_ok=True)
+        
+        image_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
+        image_path = img_dir / image_filename
+        
+        content = await file.read()
+        with open(image_path, "wb") as f:
+            f.write(content)
+        
+        clip_model = get_clip_model()
+        candidates = ["chart", "diagram", "table", "screenshot", "photograph", "document page", "plot", "graph", "infographic"]
+        label = clip_model.get_image_label(str(image_path), candidates)
+        embedding = clip_model.get_image_embedding(str(image_path))
+        
+        if not embedding:
+            raise HTTPException(status_code=500, detail="Failed to embed image")
+        
+        timestamp = datetime.now().isoformat()
+        img_meta = {
+            "source": file.filename,
+            "filename": file.filename,
+            "type": "image",
+            "label": label,
+            "timestamp": timestamp
+        }
+        
+        img_text = f"Image: {label} from {file.filename}"
+        img_doc = Document(page_content=img_text, metadata=img_meta)
+        
+        vector_store = get_vector_store()
+        vector_store.add_image_documents([img_doc], [embedding])
+        
+        # Delete image after embedding
+        try:
+            os.unlink(str(image_path))
+        except:
+            pass
+        
+        return ImageIngestResponse(
+            status="success",
+            filename=file.filename,
+            label=label,
+            timestamp=timestamp
         )
     
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error processing URL: {str(e)}",
-        )
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@app.post("/query", response_model=QueryResponse)
-async def query(request: QueryRequest):
-    """
-    Query the RAG system.
-    
-    Retrieves relevant documents and generates an answer using the LLM.
-    """
+@app.post("/chat", response_model=ChatResponse)
+async def chat(
+    question: Optional[str] = Form(None, description="Your question"),
+    image: Optional[UploadFile] = File(None, description="Optional image for visual search"),
+):
+    """Multimodal chat - supports text, image, or text+image queries."""
     try:
         chain = get_chain()
-        response = chain.query(
-            question=request.question,
-        )
         
-        return QueryResponse(
+        image_path = None
+        if image:
+            file_ext = os.path.splitext(image.filename)[1].lower()
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
+                content = await image.read()
+                tmp_file.write(content)
+                image_path = tmp_file.name
+        
+        response = chain.query(question=question, image_query_path=image_path)
+        
+        if image_path and os.path.exists(image_path):
+            os.unlink(image_path)
+        
+        return ChatResponse(
             answer=response.answer,
             sources=response.sources,
             query=response.query,
@@ -174,40 +202,10 @@ async def query(request: QueryRequest):
         )
     
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error processing query: {str(e)}",
-        )
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@app.delete("/documents/{filename}")
-async def delete_document(filename: str):
-    """
-    Delete all chunks associated with a filename.
-    """
-    try:
-        agent = get_agent()
-        result = agent.delete_file(filename)
-        
-        if result["status"] == "error":
-            raise HTTPException(status_code=500, detail=result["error"])
-        
-        return result
-    
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error deleting document: {str(e)}",
-        )
-
-
-# Run with: uvicorn api:app --reload
 if __name__ == "__main__":
     import uvicorn
     settings = get_settings()
-    uvicorn.run(
-        "api:app",
-        host=settings.api_host,
-        port=settings.api_port,
-        reload=settings.api_reload,
-    )
+    uvicorn.run("api:app", host=settings.api_host, port=settings.api_port, reload=settings.api_reload)

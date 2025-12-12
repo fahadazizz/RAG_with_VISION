@@ -5,8 +5,8 @@ from datetime import datetime
 API_BASE_URL = "http://localhost:8000"
 
 st.set_page_config(
-    page_title="RAG Chatbot",
-    page_icon="🤖",
+    page_title="VRAG - Vision RAG",
+    page_icon="🔮",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -16,77 +16,85 @@ st.markdown("""
     .main-header {
         font-size: 2.5rem;
         font-weight: 700;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(90deg, #4f46e5 0%, #7c3aed 50%, #a855f7 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         padding: 1rem 0;
     }
     .stButton>button {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(90deg, #4f46e5 0%, #7c3aed 100%);
         color: white;
         border: none;
         padding: 0.5rem 2rem;
         border-radius: 0.5rem;
         font-weight: 600;
     }
-    .stButton>button:hover {
-        opacity: 0.9;
+    .query-mode {
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
     }
 </style>
 """, unsafe_allow_html=True)
 
 
-def upload_file(file):
+def upload_document(file):
     try:
         files = {"file": (file.name, file.getvalue(), file.type)}
         response = requests.post(f"{API_BASE_URL}/upload", files=files)
         return response.json()
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "detail": str(e)}
 
 
-def upload_url(url: str):
+def upload_image(file):
     try:
+        files = {"file": (file.name, file.getvalue(), file.type)}
+        response = requests.post(f"{API_BASE_URL}/upload-image", files=files)
+        return response.json()
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+
+
+def chat(question: str = None, image_file=None):
+    """Multimodal chat - text, image, or both."""
+    try:
+        data = {}
+        files = {}
+        
+        if question:
+            data["question"] = question
+        
+        if image_file:
+            files["image"] = (image_file.name, image_file.getvalue(), image_file.type)
+        
         response = requests.post(
-            f"{API_BASE_URL}/upload-url",
-            json={"url": url}
+            f"{API_BASE_URL}/chat",
+            data=data if data else None,
+            files=files if files else None
         )
         return response.json()
     except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-
-def query_rag(question: str):
-    try:
-        response = requests.post(
-            f"{API_BASE_URL}/query",
-            json={"question": question}
-        )
-        return response.json()
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
+        return {"status": "error", "detail": str(e)}
 
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 
-st.markdown('<h1 class="main-header">🤖 RAG Chatbot</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-header">🔮 VRAG - Vision RAG</h1>', unsafe_allow_html=True)
+st.caption("Multimodal RAG: Text | Image | Text + Image")
 
-# SIDEBAR - Chat History Only
+# Sidebar - Chat History
 with st.sidebar:
     st.header("💬 Chat History")
-    
     st.divider()
     
-    # Display chat history
     if st.session_state.messages:
-        for i, message in enumerate(st.session_state.messages):
-            if message["role"] == "user":
-                st.markdown(f"**You:** {message['content'][:50]}...")
-            else:
-                st.markdown(f"**AI:** {message['content'][:50]}...")
-            st.caption(f"Message {i+1}")
+        for i, msg in enumerate(st.session_state.messages):
+            role = "You" if msg["role"] == "user" else "AI"
+            mode = msg.get("mode", "")
+            st.markdown(f"**{role}** ({mode}): {msg['content'][:30]}...")
             st.divider()
     else:
         st.caption("No chat history yet")
@@ -96,90 +104,129 @@ with st.sidebar:
         st.rerun()
 
 
-# MAIN AREA - Document Upload, URL, and Query
-col1, col2 = st.columns([1, 1])
+# Main Area - Upload Section
+st.subheader("📥 Ingest Data")
+col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("📄 Upload Document")
-    uploaded_file = st.file_uploader(
-        "Choose a PDF or DOCX file",
-        type=["pdf", "docx"],
-        help="Upload a document to add to the knowledge base"
-    )
+    st.markdown("**📄 Document (PDF/DOCX)**")
+    doc_file = st.file_uploader("Upload document", type=["pdf", "docx"], key="doc_upload", label_visibility="collapsed")
     
-    if uploaded_file is not None:
-        if st.button("📤 Process Document"):
-            with st.spinner("Processing document..."):
-                result = upload_file(uploaded_file)
-                
-                if result.get("status") == "success":
-                    st.success(f"✅ Uploaded: {result.get('filename')}")
-                    st.info(f"Created {result.get('chunks_created')} chunks")
-                else:
-                    st.error(f"❌ Error: {result.get('error', 'Unknown error')}")
+    if doc_file and st.button("Ingest Document", key="btn_doc"):
+        with st.spinner("Processing..."):
+            result = upload_document(doc_file)
+            if result.get("status") == "success":
+                st.success(f"✅ {result.get('chunks_created')} chunks | {result.get('images_indexed', 0)} images")
+            else:
+                st.error(f"❌ {result.get('detail', 'Error')}")
 
 with col2:
-    st.subheader("🌐 Ingest from URL")
-    url_input = st.text_input(
-        "Enter URL",
-        placeholder="https://example.com/article",
-        help="Enter a URL to extract and ingest content"
-    )
+    st.markdown("**🖼️ Standalone Image**")
+    img_file = st.file_uploader("Upload image", type=["jpg", "jpeg", "png", "gif", "webp"], key="img_upload", label_visibility="collapsed")
     
-    if st.button("📥 Ingest URL"):
-        with st.spinner("Fetching and processing URL..."):
-            result = upload_url(url_input)
-            
-            if result.get("status") == "success":
-                st.success(f"✅ Ingested URL")
-                st.info(f"Created {result.get('chunks_created')} chunks")
-            else:
-                st.error(f"❌ Error: {result.get('error', 'Unknown error')}")
+    if img_file:
+        st.image(img_file, width=100)
+        if st.button("Ingest Image", key="btn_img"):
+            with st.spinner("CLIP processing..."):
+                result = upload_image(img_file)
+                if result.get("status") == "success":
+                    st.success(f"✅ Type: {result.get('label')}")
+                else:
+                    st.error(f"❌ {result.get('detail', 'Error')}")
+
 
 st.divider()
 
-# Chat Interface
-st.subheader("💬 Ask Questions")
+# Chat Section with Query Mode Selection
+st.subheader("💬 Multimodal Chat")
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# Query Mode Selection
+query_mode = st.radio(
+    "Query Mode",
+    ["📝 Text Only", "🖼️ Image Only", "📝+🖼️ Text + Image"],
+    horizontal=True,
+    key="query_mode"
+)
+
+# Input areas based on mode
+text_input = None
+query_image = None
+
+if query_mode == "📝 Text Only":
+    text_input = st.text_input("Enter your question:", key="text_query", placeholder="Ask about your documents...")
+
+elif query_mode == "🖼️ Image Only":
+    query_image = st.file_uploader(
+        "Upload query image:",
+        type=["jpg", "jpeg", "png", "gif", "webp"],
+        key="image_query"
+    )
+    if query_image:
+        st.image(query_image, width=200)
+
+else:  # Text + Image
+    text_input = st.text_input("Enter your question:", key="multimodal_text", placeholder="Ask about the image...")
+    query_image = st.file_uploader(
+        "Upload query image:",
+        type=["jpg", "jpeg", "png", "gif", "webp"],
+        key="multimodal_image"
+    )
+    if query_image:
+        st.image(query_image, width=200)
+
+# Submit button
+if st.button("🔮 Search & Generate", type="primary"):
+    if not text_input and not query_image:
+        st.warning("Please provide text, image, or both.")
+    else:
+        # Determine mode label
+        if text_input and query_image:
+            mode_label = "Text+Image"
+        elif query_image:
+            mode_label = "Image"
+        else:
+            mode_label = "Text"
         
-        if message["role"] == "assistant" and "sources" in message:
-            if message["sources"]:
-                with st.expander("📚 View Sources"):
-                    for i, source in enumerate(message["sources"], 1):
-                        st.markdown(f"**Source {i}:** {source.get('filename', 'Unknown')}")
-
-if prompt := st.chat_input("Ask a question about your documents..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            result = query_rag(prompt)
+        # Add user message
+        display_content = text_input if text_input else "[Image Query]"
+        st.session_state.messages.append({
+            "role": "user",
+            "content": display_content,
+            "mode": mode_label
+        })
+        
+        with st.spinner("🔮 Processing..."):
+            result = chat(text_input, query_image)
             
-            if "error" in result:
-                response = f"❌ Error: {result['error']}"
+            if result.get("detail"):
+                response = f"❌ {result['detail']}"
                 sources = []
             else:
-                response = result.get("answer", "No response received")
+                response = result.get("answer", "No response")
                 sources = result.get("sources", [])
             
-            st.markdown(response)
-            
-            if sources:
-                with st.expander("📚 View Sources"):
-                    for i, source in enumerate(sources, 1):
-                        st.markdown(f"**Source {i}:** {source.get('filename', 'Unknown')}")
-    
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": response,
-        "sources": sources,
-    })
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response,
+                "sources": sources,
+                "mode": mode_label
+            })
+        
+        st.rerun()
+
+# Display chat messages
+st.divider()
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.caption(f"Mode: {msg.get('mode', 'Unknown')}")
+        st.markdown(msg["content"])
+        
+        if msg["role"] == "assistant" and msg.get("sources"):
+            with st.expander("📚 Sources"):
+                for i, src in enumerate(msg["sources"], 1):
+                    icon = "🖼️" if src.get("type") == "image" else "📄"
+                    st.markdown(f"{icon} **{i}.** {src.get('filename', 'Unknown')}")
+
 
 st.divider()
-st.caption("Built with LangChain, Pinecone, and Ollama | RAG Chatbot v1.0")
+st.caption("VRAG v2.0 | LangChain + CLIP + Pinecone + Ollama")
