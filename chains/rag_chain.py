@@ -1,11 +1,10 @@
-from typing import Optional, Generator, List
 from dataclasses import dataclass
 
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
 from langchain_classic.memory import ConversationSummaryBufferMemory
 
-from chains.retriever import get_retriever
+from chains.retriever import RAGRetriever, get_retriever
 from models.llm import get_ollama_llm
 from prompts.rag_prompts import get_rag_prompt
 from prompts.chat_history_prompt import chat_history_prompt
@@ -112,13 +111,13 @@ class RAGChain:
             image_query_path=image_query_path
         )
         
-        # 2. Format context
+        # 3. Format context
         context = self._retriever.format_context(results)
         
-        # 3. Extract sources
+        # 4. Extract sources
         sources = [result.metadata for result in results]
         
-        # 4. Generate answer
+        # 5. Generate answer
         response = self._chain.invoke({
             "context": context,
             "question": question
@@ -159,7 +158,6 @@ class RAGChain:
         )
         context = self._retriever.format_context(results)
         
-        # 2. stream
         prompt_value = self._prompt.format(
             context=context,
             question=question,
