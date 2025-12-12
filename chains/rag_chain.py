@@ -1,3 +1,4 @@
+from typing import List, Optional, Generator
 from dataclasses import dataclass
 
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
