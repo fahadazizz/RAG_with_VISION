@@ -174,7 +174,7 @@ async def upload_image(
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(
-    question: str = Form(..., description="Your question"),
+    question: Optional[str] = Form(None, description="Your question"),
     image: Optional[UploadFile] = File(None, description="Optional image for visual search"),
 ):
     """Multimodal chat - supports text, image, or text+image queries."""

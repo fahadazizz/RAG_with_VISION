@@ -29,6 +29,11 @@ st.markdown("""
         border-radius: 0.5rem;
         font-weight: 600;
     }
+    .query-mode {
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -51,17 +56,21 @@ def upload_image(file):
         return {"status": "error", "detail": str(e)}
 
 
-def chat(question: str, image_file=None):
+def chat(question: str = None, image_file=None):
+    """Multimodal chat - text, image, or both."""
     try:
-        data = {"question": question}
+        data = {}
         files = {}
+        
+        if question:
+            data["question"] = question
         
         if image_file:
             files["image"] = (image_file.name, image_file.getvalue(), image_file.type)
         
         response = requests.post(
             f"{API_BASE_URL}/chat",
-            data=data,
+            data=data if data else None,
             files=files if files else None
         )
         return response.json()
@@ -74,7 +83,7 @@ if "messages" not in st.session_state:
 
 
 st.markdown('<h1 class="main-header">🔮 VRAG - Vision RAG</h1>', unsafe_allow_html=True)
-st.caption("Multimodal RAG with Text + Image Understanding")
+st.caption("Multimodal RAG: Text | Image | Text + Image")
 
 # Sidebar - Chat History
 with st.sidebar:
@@ -84,8 +93,8 @@ with st.sidebar:
     if st.session_state.messages:
         for i, msg in enumerate(st.session_state.messages):
             role = "You" if msg["role"] == "user" else "AI"
-            icon = "🖼️ " if msg.get("has_image") else ""
-            st.markdown(f"**{role}:** {icon}{msg['content'][:40]}...")
+            mode = msg.get("mode", "")
+            st.markdown(f"**{role}** ({mode}): {msg['content'][:30]}...")
             st.divider()
     else:
         st.caption("No chat history yet")
@@ -96,37 +105,29 @@ with st.sidebar:
 
 
 # Main Area - Upload Section
+st.subheader("📥 Ingest Data")
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("📄 Upload Document")
-    doc_file = st.file_uploader(
-        "PDF or DOCX",
-        type=["pdf", "docx"],
-        key="doc_upload"
-    )
+    st.markdown("**📄 Document (PDF/DOCX)**")
+    doc_file = st.file_uploader("Upload document", type=["pdf", "docx"], key="doc_upload", label_visibility="collapsed")
     
-    if doc_file and st.button("📤 Ingest Document", key="btn_doc"):
+    if doc_file and st.button("Ingest Document", key="btn_doc"):
         with st.spinner("Processing..."):
             result = upload_document(doc_file)
             if result.get("status") == "success":
-                st.success(f"✅ {result.get('filename')}")
-                st.info(f"📝 {result.get('chunks_created')} chunks | 🖼️ {result.get('images_indexed', 0)} images")
+                st.success(f"✅ {result.get('chunks_created')} chunks | {result.get('images_indexed', 0)} images")
             else:
                 st.error(f"❌ {result.get('detail', 'Error')}")
 
 with col2:
-    st.subheader("🖼️ Upload Image")
-    img_file = st.file_uploader(
-        "Image file",
-        type=["jpg", "jpeg", "png", "gif", "webp"],
-        key="img_upload"
-    )
+    st.markdown("**🖼️ Standalone Image**")
+    img_file = st.file_uploader("Upload image", type=["jpg", "jpeg", "png", "gif", "webp"], key="img_upload", label_visibility="collapsed")
     
     if img_file:
-        st.image(img_file, width=150)
-        if st.button("📤 Ingest Image", key="btn_img"):
-            with st.spinner("Processing with CLIP..."):
+        st.image(img_file, width=100)
+        if st.button("Ingest Image", key="btn_img"):
+            with st.spinner("CLIP processing..."):
                 result = upload_image(img_file)
                 if result.get("status") == "success":
                     st.success(f"✅ Type: {result.get('label')}")
@@ -136,51 +137,66 @@ with col2:
 
 st.divider()
 
-# Chat Section
-st.subheader("💬 Chat")
+# Chat Section with Query Mode Selection
+st.subheader("💬 Multimodal Chat")
 
-# Optional image for query
-query_image = st.file_uploader(
-    "🖼️ Attach image (optional)",
-    type=["jpg", "jpeg", "png", "gif", "webp"],
-    key="query_img",
-    help="Attach an image for multimodal search"
+# Query Mode Selection
+query_mode = st.radio(
+    "Query Mode",
+    ["📝 Text Only", "🖼️ Image Only", "📝+🖼️ Text + Image"],
+    horizontal=True,
+    key="query_mode"
 )
 
-if query_image:
-    st.image(query_image, width=150, caption="Query Image")
+# Input areas based on mode
+text_input = None
+query_image = None
 
-# Display messages
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        if msg.get("has_image"):
-            st.caption("🖼️ Image attached")
-        st.markdown(msg["content"])
+if query_mode == "📝 Text Only":
+    text_input = st.text_input("Enter your question:", key="text_query", placeholder="Ask about your documents...")
+
+elif query_mode == "🖼️ Image Only":
+    query_image = st.file_uploader(
+        "Upload query image:",
+        type=["jpg", "jpeg", "png", "gif", "webp"],
+        key="image_query"
+    )
+    if query_image:
+        st.image(query_image, width=200)
+
+else:  # Text + Image
+    text_input = st.text_input("Enter your question:", key="multimodal_text", placeholder="Ask about the image...")
+    query_image = st.file_uploader(
+        "Upload query image:",
+        type=["jpg", "jpeg", "png", "gif", "webp"],
+        key="multimodal_image"
+    )
+    if query_image:
+        st.image(query_image, width=200)
+
+# Submit button
+if st.button("🔮 Search & Generate", type="primary"):
+    if not text_input and not query_image:
+        st.warning("Please provide text, image, or both.")
+    else:
+        # Determine mode label
+        if text_input and query_image:
+            mode_label = "Text+Image"
+        elif query_image:
+            mode_label = "Image"
+        else:
+            mode_label = "Text"
         
-        if msg["role"] == "assistant" and msg.get("sources"):
-            with st.expander("📚 Sources"):
-                for i, src in enumerate(msg["sources"], 1):
-                    icon = "🖼️" if src.get("type") == "image" else "📄"
-                    st.markdown(f"{icon} **{i}.** {src.get('filename', 'Unknown')}")
-
-# Chat input
-if prompt := st.chat_input("Ask about your documents..."):
-    has_image = query_image is not None
-    
-    st.session_state.messages.append({
-        "role": "user",
-        "content": prompt,
-        "has_image": has_image
-    })
-    
-    with st.chat_message("user"):
-        if has_image:
-            st.caption("🖼️ Image attached")
-        st.markdown(prompt)
-    
-    with st.chat_message("assistant"):
-        with st.spinner("🔮 Thinking..."):
-            result = chat(prompt, query_image)
+        # Add user message
+        display_content = text_input if text_input else "[Image Query]"
+        st.session_state.messages.append({
+            "role": "user",
+            "content": display_content,
+            "mode": mode_label
+        })
+        
+        with st.spinner("🔮 Processing..."):
+            result = chat(text_input, query_image)
             
             if result.get("detail"):
                 response = f"❌ {result['detail']}"
@@ -189,19 +205,27 @@ if prompt := st.chat_input("Ask about your documents..."):
                 response = result.get("answer", "No response")
                 sources = result.get("sources", [])
             
-            st.markdown(response)
-            
-            if sources:
-                with st.expander("📚 Sources"):
-                    for i, src in enumerate(sources, 1):
-                        icon = "🖼️" if src.get("type") == "image" else "📄"
-                        st.markdown(f"{icon} **{i}.** {src.get('filename', 'Unknown')}")
-    
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": response,
-        "sources": sources,
-    })
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response,
+                "sources": sources,
+                "mode": mode_label
+            })
+        
+        st.rerun()
+
+# Display chat messages
+st.divider()
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.caption(f"Mode: {msg.get('mode', 'Unknown')}")
+        st.markdown(msg["content"])
+        
+        if msg["role"] == "assistant" and msg.get("sources"):
+            with st.expander("📚 Sources"):
+                for i, src in enumerate(msg["sources"], 1):
+                    icon = "🖼️" if src.get("type") == "image" else "📄"
+                    st.markdown(f"{icon} **{i}.** {src.get('filename', 'Unknown')}")
 
 
 st.divider()
