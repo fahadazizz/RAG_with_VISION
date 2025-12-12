@@ -8,13 +8,8 @@ class CLIPModelWrapper:
     
     def __init__(self):
         self.model_name = "openai/clip-vit-large-patch14"
-        # Determine device
-        if torch.backends.mps.is_available():
-            self.device = "mps"
-        elif torch.cuda.is_available():
-            self.device = "cuda"
-        else:
-            self.device = "cpu"
+        
+        self.device = "cpu"
             
         print(f"Loading CLIP model {self.model_name} on {self.device}...")
         
@@ -49,14 +44,14 @@ class CLIPModelWrapper:
         """
         try:
             image = Image.open(image_path)
-            inputs = self.processor(text=candidates, images=image, return_tensors="pt", padding=True).to(self.device)
+            inputs = self.processor(text=candidates, images=image, return_tensors="pt").to(self.device)
             
             with torch.no_grad():
                 outputs = self.model(**inputs)
-                logits_per_image = outputs.logits_per_image  # this is the image-text similarity score
+                logits_per_image = outputs.logits_per_image  
                 probs = logits_per_image.softmax(dim=1)
             
-            # Get index of highest probability
+
             top_prob, top_lbl_idx = probs.topk(1)
             return candidates[top_lbl_idx.item()]
         

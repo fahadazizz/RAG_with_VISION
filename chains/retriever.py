@@ -33,26 +33,34 @@ class RAGRetriever:
     def retrieve(
         self,
         query: str,
+        image_query_path: Optional[str] = None,
     ) -> List[RetrievalResult]:
         """
-        Retrieve documents using Cosine Similarity.
-        
-        Process:
-        1. Get top_k documents from vector store (sorted by similarity)
-        2. Return results directly
+        Retrieve documents using Multimodal Fusion or Standard Search.
         
         Args:
-            query: User query
+            query: User text query
+            image_query_path: Optional path to query image
             
         Returns:
             List of top documents with scores
         """
-        results = self._vector_store.similarity_search_with_score(
-            query=query,
-            k=self._top_k,
-        )
-        
-        print(f"Retrieved {len(results)} documents via Cosine Similarity")
+        if image_query_path:
+            # use multimodal search
+            results = self._vector_store.multimodal_search(
+                text_query=query,
+                image_query_path=image_query_path,
+                k=self._top_k
+            )
+            print(f"Retrieved {len(results)} documents via Multimodal Fusion")
+        else:
+            # Standard text search
+            results = self._vector_store.similarity_search_with_score(
+                query=query,
+                k=self._top_k,
+            )
+            print(f"Retrieved {len(results)} documents via Cosine Similarity")
+
         for i, (doc, score) in enumerate(results):
              filename = doc.metadata.get('filename', 'Unknown')
              page = f", Page {doc.metadata.get('page')}" if 'page' in doc.metadata else ""

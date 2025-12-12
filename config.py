@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     chunk_overlap: int = Field(default=200)
     
     # RAG Retrieval
-    rag_top_k: int = Field(default=2)
+    rag_top_k: int = Field(default=5)
     
     # API
     api_host: str = Field(default="0.0.0.0")

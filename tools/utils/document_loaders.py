@@ -5,7 +5,6 @@ from pathlib import Path
 
 from langchain_core.documents import Document
 from langchain_community.document_loaders import Docx2txtLoader
-from langchain_community.document_loaders import WebBaseLoader
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_community.document_loaders.parsers import RapidOCRBlobParser
 import fitz 
@@ -142,26 +141,7 @@ class DOCXLoader(MetaDATAExtractor):
         return documents
 
 
-class URLLoader(MetaDATAExtractor):
-    
-    def __init__(self, url: str):
-        self.url = url
-    
-    def load(self) -> list[Document]:
-        """
-        Load content from URL.
-        
-        Returns:
-            List of Document objects
-        """
-        loader = WebBaseLoader(self.url)
-        documents = loader.load()
-        
-        metadata = self._create_metadata(self.url)
-        for doc in documents:
-            doc.metadata = metadata
-        
-        return documents
+
 
 
 class DocumentLoaderFactory:
@@ -182,8 +162,7 @@ class DocumentLoaderFactory:
         Raises:
             ValueError: If source type is not supported
         """
-        if source.startswith(("http://", "https://")):
-            return URLLoader(source)
+
         
         path = Path(source)
         extension = path.suffix.lower()
@@ -209,8 +188,7 @@ class DocumentLoaderFactory:
         Returns:
             True if supported, False otherwise
         """
-        if source.startswith(("http://", "https://")):
-            return True
+
         
         extension = Path(source).suffix.lower()
         return extension in cls.SUPPORTED_EXTENSIONS

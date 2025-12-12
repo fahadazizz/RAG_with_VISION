@@ -47,18 +47,23 @@ class RAGChain:
     def query(
         self,
         question: str,
+        image_query_path: Optional[str] = None,
     ) -> RAGResponse:
         """
         Execute a RAG query and get a response.
         
         Args:
             question: User question
+            image_query_path: Optional path to query image for multimodal search
             
         Returns:
             RAGResponse with answer and sources
         """
-        # 1. Retrieve documents (Single Pass)
-        results = self._retriever.retrieve(query=question)
+        # 1. Retrieve documents (Multimodal if image provided)
+        results = self._retriever.retrieve(
+            query=question,
+            image_query_path=image_query_path
+        )
         
         # 2. Format context
         context = self._retriever.format_context(results)
@@ -81,18 +86,23 @@ class RAGChain:
     def stream_query(
         self,
         question: str,
+        image_query_path: Optional[str] = None,
     ) -> Generator[str, None, None]:
         """
         Stream a RAG query response.
         
         Args:
             question: User question
+            image_query_path: Optional path to query image for multimodal search
             
         Yields:
             Response chunks
         """
         # 1. Retrieve & Format
-        results = self._retriever.retrieve(query=question)
+        results = self._retriever.retrieve(
+            query=question,
+            image_query_path=image_query_path
+        )
         context = self._retriever.format_context(results)
         
         # 2. stream

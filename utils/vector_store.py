@@ -99,9 +99,6 @@ class VectorStoreManager:
                 # Metadata must be simple types for Pinecone
                 metadata = doc.metadata.copy()
                 metadata["text"] = doc.page_content 
-                # Ensure image_paths is not a list (Pinecone supports list of strings, but let's be safe)
-                # Actually Pinecone supports list[str].
-                
                 vectors.append({
                     "id": doc_id, 
                     "values": emb, 
@@ -137,16 +134,82 @@ class VectorStoreManager:
             k=k,
         )
     
-    def delete_by_filter(self, filter: dict) -> None:
+    def multimodal_search(
+        self,
+        text_query: str | None = None,
+        image_query_path: str | None = None,
+        k: int = 5,
+    ) -> List[Tuple[Document, float]]:
         """
-        Delete documents matching a filter.
+        Perform multimodal retrieval.
+        - Text Query: Embed with text model.
+        - Image Query: Embed with CLIP.
+        - Both: Fuse embeddings (mean of normalized vectors).
         
         Args:
-            filter: Metadata filter for documents to delete
+            text_query: Optional text query
+            image_query_path: Optional path to query image
+            k: Top k results
+            
+        Returns:
+            List of (Document, score)
         """
-        # Get the Pinecone index directly for deletion
-        index = self._pc.Index(self.index_name)
-        index.delete(filter=filter)
+        import numpy as np
+        
+        text_emb = None
+        if text_query:
+            text_emb = self._embedding_model.embed_query(text_query)
+            norm = np.linalg.norm(text_emb)
+            if norm > 0:
+                text_emb = (np.array(text_emb) / norm).tolist()
+                
+        image_emb = None
+        if image_query_path:
+            from models.clip_model import get_clip_model
+            clip = get_clip_model()
+            image_emb = clip.get_image_embedding(image_query_path)
+            norm = np.linalg.norm(image_emb)
+            if norm > 0:
+                image_emb = (np.array(image_emb) / norm).tolist()
+                
+        final_vec = []
+        if text_emb and image_emb:
+            fused = (np.array(text_emb) + np.array(image_emb)) / 2.0
+            norm = np.linalg.norm(fused)
+            if norm > 0:
+                final_vec = (fused / norm).tolist()
+            else:
+                final_vec = fused.tolist()
+                
+        elif text_emb:
+            final_vec = text_emb
+        elif image_emb:
+            final_vec = image_emb
+        else:
+            return [] 
+            
+        print(f"Multimodal Search: Text='{text_query}' Image='{image_query_path}'")
+        
+        try:
+            index = self._pc.Index(self.index_name)
+            results = index.query(
+                vector=final_vec,
+                top_k=k,
+                include_metadata=True
+            )
+            
+            docs = []
+            for match in results.matches:
+                metadata = match.metadata or {}
+                content = metadata.pop("text", "") 
+                doc = Document(page_content=content, metadata=metadata)
+                docs.append((doc, match.score))
+                
+            return docs
+            
+        except Exception as e:
+            print(f"Error in multimodal search: {e}")
+            return []
 
 
 @lru_cache()
