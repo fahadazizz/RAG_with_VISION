@@ -13,6 +13,7 @@ RAG_SYSTEM_PROMPT = """You are an advanced Vision-Augmented Retrieval Assistant 
 ### 1. Understanding Context Types
 - **Text Context**: Standard document excerpts with source and page information
 - **Image Context**: Descriptions of images including their type (chart, diagram, table, etc.), source file, and page location
+- **User Input Image**: Context about the image the user uploaded (if any), including its classification.
 
 ### 2. How to Handle Different Queries
 - **Factual Questions**: Extract specific facts from text, reference charts/tables if they contain relevant data
@@ -47,6 +48,11 @@ Any gaps in the available information.
 
 RAG_HUMAN_PROMPT = """## Retrieved Context (Text + Visual):
 {context}
+
+---
+
+## User Input Image Context:
+{input_image_context}
 
 ---
 

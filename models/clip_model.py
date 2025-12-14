@@ -1,21 +1,20 @@
 from typing import List
 from functools import lru_cache
-import torch
 from PIL import Image
-from transformers import CLIPProcessor, CLIPModel
+from sentence_transformers import SentenceTransformer, util
 
 class CLIPModelWrapper:
     
     def __init__(self):
-        self.model_name = "openai/clip-vit-large-patch14"
-        
+        # Must match the text embedding model name exactly
+        self.model_name = "clip-ViT-L-14"
         self.device = "cpu"
             
         print(f"Loading CLIP model {self.model_name} on {self.device}...")
         
         try:
-            self.model = CLIPModel.from_pretrained(self.model_name).to(self.device)
-            self.processor = CLIPProcessor.from_pretrained(self.model_name)
+            # sentence-transformers handles the CLIP model loading
+            self.model = SentenceTransformer(self.model_name, device=self.device)
         except Exception as e:
             print(f"Error loading CLIP model: {e}")
             raise e
@@ -26,14 +25,9 @@ class CLIPModelWrapper:
         """
         try:
             image = Image.open(image_path)
-            inputs = self.processor(images=image, return_tensors="pt").to(self.device)
-            
-            with torch.no_grad():
-                image_features = self.model.get_image_features(**inputs)
-            
-            # Normalize
-            image_features = image_features / image_features.norm(p=2, dim=-1, keepdim=True)
-            return image_features.squeeze().tolist()
+            # SentenceTransformer encodes images directly if passed to encode
+            embedding = self.model.encode(image, convert_to_tensor=False, normalize_embeddings=True)
+            return embedding.tolist()
         except Exception as e:
             print(f"Error embedding image {image_path}: {e}")
             return []
@@ -44,16 +38,19 @@ class CLIPModelWrapper:
         """
         try:
             image = Image.open(image_path)
-            inputs = self.processor(text=candidates, images=image, return_tensors="pt").to(self.device)
             
-            with torch.no_grad():
-                outputs = self.model(**inputs)
-                logits_per_image = outputs.logits_per_image  
-                probs = logits_per_image.softmax(dim=1)
+            # Encode image
+            img_emb = self.model.encode(image, convert_to_tensor=True, normalize_embeddings=True)
             
-
-            top_prob, top_lbl_idx = probs.topk(1)
-            return candidates[top_lbl_idx.item()]
+            # Encode text candidates
+            text_embs = self.model.encode(candidates, convert_to_tensor=True, normalize_embeddings=True)
+            
+            # Compute cosine similarities
+            cos_scores = util.cos_sim(img_emb, text_embs)[0]
+            
+            # Find best match
+            best_score_idx = cos_scores.argmax()
+            return candidates[best_score_idx]
         
         except Exception as e:
             print(f"Error classifying image {image_path}: {e}")

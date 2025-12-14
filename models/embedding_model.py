@@ -1,7 +1,7 @@
 from typing import List
 from functools import lru_cache
 
-from langchain_ollama import OllamaEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from config import get_settings
 
 
@@ -10,42 +10,31 @@ class EmbeddingModel:
     def __init__(
         self,
     ):
-        settings = get_settings()
+        # We enforce the CLIP model here to ensure alignment with the image model
+        self.model_name = "sentence-transformers/clip-ViT-L-14"
+        self.device = "cpu"
         
-        self.model_name = settings.embedding_model_name
-        # self.device = "cpu"
+        print(f"Loading Text Embedding Model: {self.model_name}...")
         
-        self._embeddings = OllamaEmbeddings(
-            model=self.model_name,
-            base_url=settings.llm_base_url,
+        self._embeddings = HuggingFaceEmbeddings(
+            model_name=self.model_name,
+            model_kwargs={'device': self.device},
+            encode_kwargs={'normalize_embeddings': True} 
         )
     
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """
         Embed a list of documents.
-        
-        Args:
-            texts: List of document texts to embed
-            
-        Returns:
-            List of embedding vectors
         """
         return self._embeddings.embed_documents(texts)
     
     def embed_query(self, query: str) -> List[float]:
         """
         Embed a single query.
-        Optimized for query embedding (may use different pooling).
-        
-        Args:
-            query: Query text to embed
-            
-        Returns:
-            Embedding vector
         """
         return self._embeddings.embed_query(query)
     
-    def get_langchain_embeddings(self) -> OllamaEmbeddings:
+    def get_langchain_embeddings(self) -> HuggingFaceEmbeddings:
         return self._embeddings
 
 

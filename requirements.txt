@@ -8,8 +8,9 @@ langchain-experimental
 sentence-transformers
 pinecone-client
 langchain-ollama
-pymupdf
-rapidocr-onnxruntime
+# pymupdf
+# rapidocr-onnxruntime
+pymupdf4llm
 pillow
 python-docx
 docx2txt
@@ -25,3 +26,4 @@ python-dotenv
 tqdm
 nltk
 transformers
+numpy<2

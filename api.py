@@ -46,7 +46,7 @@ def get_chain():
 class ChatResponse(BaseModel):
     answer: str
     sources: list
-    query: str
+    query: Optional[str] = None
     timestamp: str
 
 

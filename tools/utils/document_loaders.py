@@ -1,13 +1,12 @@
 import os
+import io
 from typing import Optional
 from datetime import datetime
 from pathlib import Path
 
 from langchain_core.documents import Document
 from langchain_community.document_loaders import Docx2txtLoader
-from langchain_community.document_loaders import PyMuPDFLoader
-from langchain_community.document_loaders.parsers import RapidOCRBlobParser
-import fitz 
+import pymupdf4llm
 from PIL import Image
 
 
@@ -37,80 +36,56 @@ class PDFLoader(MetaDATAExtractor):
         self.filename = Path(file_path).name
         self.img_dir = Path("static/images")
         self.img_dir.mkdir(parents=True, exist_ok=True)
-    
-    def _extract_images(self) -> dict:
-        """
-        Extract images from PDF and save to disk.
-        
-        Returns:
-            Dictionary mapping page_index (0-based) to list of image paths.
-        """
-        images_map = {}
-        doc = fitz.open(self.file_path)
-        
-        for page_index, page in enumerate(doc):
-            image_list = page.get_images(full=True)
-            page_images = []
-            
-            for img_index, img in enumerate(image_list):
-                try:
-                    xref = img[0]
-                    base_image = doc.extract_image(xref)
-                    image_bytes = base_image["image"]
-                    image_ext = base_image["ext"]
-                    
-                    image_filename = f"{self.filename}_p{page_index+1}_i{img_index+1}.{image_ext}"
-                    image_path = self.img_dir / image_filename
-                    
-                    with open(image_path, "wb") as f:
-                        f.write(image_bytes)
-                    
-                    page_images.append(str(image_path))
-                except Exception as e:
-                    print(f"Error extracting image {img_index} on page {page_index}: {e}")
-            
-            if page_images:
-                images_map[page_index] = page_images
-                
-        return images_map
 
     def load(self) -> list[Document]:
         """
-        Load PDF with text, images, and OCR using LangChain's PyMuPDFLoader.
-        Also manually extracts and saves images to disk for multimodal usage.
+        Load PDF with text and images using pymupdf4llm.
+        Extracts clean markdown text and saves images to disk for CLIP processing.
         
         Returns:
             List of Documents (one per page)
         """
-        loader = PyMuPDFLoader(
-            self.file_path,
-            mode="page",
-            images_inner_format="markdown-img",
-            images_parser=RapidOCRBlobParser(),
+        pdf_img_dir = self.img_dir / Path(self.filename).stem
+        pdf_img_dir.mkdir(parents=True, exist_ok=True)
+        
+        md_text_with_images = pymupdf4llm.to_markdown(
+            doc=self.file_path,
+            page_chunks=True,      
+            write_images=True,     
+            image_path=str(pdf_img_dir),  
+            image_format="png",    
+            dpi=200               
         )
-        documents = loader.load()
         
-        images_by_page = self._extract_images()
-        
+        # Process the results
+        documents = []
         metadata = self._create_metadata(self.filename)
-        for doc in documents:
-            existing_meta = doc.metadata
+        
+        for page_data in md_text_with_images:
+            page_num = page_data.get("page", 0) + 1  
+            page_text = page_data.get("text", "")
             
-            page_idx = existing_meta.get("page", 0) 
-            
-            final_metadata = {
+            # Build page metadata
+            page_metadata = {
                 **metadata,
-                **existing_meta,
+                "page": page_num,
+                "source": self.file_path,
             }
             
-            if page_idx in images_by_page:
-                final_metadata["image_paths"] = images_by_page[page_idx]
+            page_images = []
+            img_pattern = f"{Path(self.filename).stem}-{page_num}-"
             
-            if "page" in existing_meta:
-                 final_metadata["page"] = existing_meta["page"] + 1
+            for img_file in pdf_img_dir.glob(f"{img_pattern}*.png"):
+                page_images.append(str(img_file))
             
-            doc.metadata = final_metadata
-            doc.page_content = doc.page_content 
+            if page_images:
+                page_metadata["image_paths"] = page_images
+            
+            doc = Document(
+                page_content=page_text,
+                metadata=page_metadata
+            )
+            documents.append(doc)
         
         return documents
 
@@ -128,20 +103,14 @@ class DOCXLoader(MetaDATAExtractor):
         Returns:
             List of Document objects
         """
-        print("loading document")
         loader = Docx2txtLoader(self.file_path)
-        print("document laoded")
         documents = loader.load()
         
-        # Update metadata
         metadata = self._create_metadata(self.filename)
         for doc in documents:
             doc.metadata = metadata
         
         return documents
-
-
-
 
 
 class DocumentLoaderFactory:
@@ -154,7 +123,7 @@ class DocumentLoaderFactory:
         Get appropriate loader for the source.
         
         Args:
-            source: File path or URL
+            source: File path
             
         Returns:
             Appropriate document loader
@@ -162,8 +131,6 @@ class DocumentLoaderFactory:
         Raises:
             ValueError: If source type is not supported
         """
-
-        
         path = Path(source)
         extension = path.suffix.lower()
         
@@ -183,13 +150,11 @@ class DocumentLoaderFactory:
         Check if a source is supported.
         
         Args:
-            source: File path or URL
+            source: File path
             
         Returns:
             True if supported, False otherwise
         """
-
-        
         extension = Path(source).suffix.lower()
         return extension in cls.SUPPORTED_EXTENSIONS
 
